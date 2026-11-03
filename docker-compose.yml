@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: store-api-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: store_user
+      POSTGRES_PASSWORD: store_password
+      POSTGRES_DB: store_db
+    volumes:
+      - store_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U store_user -d store_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    container_name: store-api
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgres://store_user:store_password@db:5432/store_db
+      CLIENT_ORIGIN: http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  store_db_data:

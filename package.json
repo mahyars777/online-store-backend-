@@ -1,0 +1,19 @@
+{
+  "name": "nextjs-store-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Practice e-commerce REST API for a Next.js frontend",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "swagger-ui-express": "^5.0.1"
+  }
+}
