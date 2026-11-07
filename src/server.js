@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "node:crypto";
+import path from "node:path";
+import fs from "node:fs";
+import multer from "multer";
 import swaggerUi from "swagger-ui-express";
 import swaggerDocument from "./openapi.json" with { type: "json" };
 import { pool, initDb } from "./db.js";
@@ -9,7 +12,40 @@ import { pool, initDb } from "./db.js";
 dotenv.config();
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:3000" }));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+const uploadDir = process.env.UPLOAD_DIR || path.resolve("uploads");
+fs.mkdirSync(uploadDir, { recursive: true });
+app.use("/uploads", express.static(uploadDir, { fallthrough: false, maxAge: "1d" }));
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const ext = ({ "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" })[file.mimetype];
+    cb(null, `${Date.now()}-${crypto.randomUUID()}${ext || ".bin"}`);
+  }
+});
+const imageUpload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype))
+});
+const requireAdmin = (req, res, next) => {
+  const configuredKey = process.env.ADMIN_API_KEY;
+  if (!configuredKey || configuredKey === "change-this-admin-key-before-use")
+    return res.status(503).json({ message: "کلید مدیر را در متغیر ADMIN_API_KEY تنظیم کن" });
+  const suppliedKey = req.get("x-admin-key") || "";
+  const a = Buffer.from(suppliedKey);
+  const b = Buffer.from(configuredKey);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b))
+    return res.status(401).json({ message: "دسترسی مدیر معتبر نیست" });
+  next();
+};
+const removeUploadedImage = async (imageUrl) => {
+  if (typeof imageUrl !== "string" || !imageUrl.startsWith("/uploads/")) return;
+  const filename = path.basename(imageUrl);
+  if (!filename || filename !== imageUrl.slice("/uploads/".length)) return;
+  await fs.promises.unlink(path.join(uploadDir, filename)).catch((e) => { if (e.code !== "ENOENT") throw e; });
+};
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument, { customSiteTitle: "Store API Documentation" }));
 app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 
@@ -73,6 +109,103 @@ app.get("/api/products/:id", asyncRoute(async (req, res) => {
   `, [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ message: "محصول پیدا نشد" });
   res.json(result.rows[0]);
+}));
+
+// Admin endpoints: send x-admin-key with the ADMIN_API_KEY value.
+app.get("/api/admin/products", requireAdmin, asyncRoute(async (req, res) => {
+  const result = await pool.query(`
+    SELECT p.id, p.name, p.description, p.price::float AS price, p.image_url AS "imageUrl",
+      p.stock, p.category_id AS "categoryId", c.name AS "categoryName", c.slug AS "categorySlug"
+    FROM products p LEFT JOIN categories c ON c.id=p.category_id ORDER BY p.id DESC
+  `);
+  res.json(result.rows);
+}));
+
+app.post("/api/admin/products", requireAdmin, asyncRoute(async (req, res) => {
+  const { name, description = "", price, imageUrl = "", stock = 0, categoryId } = req.body ?? {};
+  if (typeof name !== "string" || !name.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 ||
+      !Number.isInteger(Number(stock)) || Number(stock) < 0 || !Number.isInteger(Number(categoryId)))
+    return res.status(400).json({ message: "name، price، stock و categoryId معتبر لازم است" });
+  const category = await pool.query("SELECT id FROM categories WHERE id=$1", [categoryId]);
+  if (!category.rowCount) return res.status(400).json({ message: "دسته‌بندی پیدا نشد" });
+  const result = await pool.query(`
+    INSERT INTO products(name,description,price,image_url,stock,category_id)
+    VALUES($1,$2,$3,$4,$5,$6)
+    RETURNING id,name,description,price::float AS price,image_url AS "imageUrl",stock,category_id AS "categoryId"
+  `, [name.trim(), String(description), Number(price), String(imageUrl), Number(stock), Number(categoryId)]);
+  res.status(201).json(result.rows[0]);
+}));
+
+app.put("/api/admin/products/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const { name, description, price, imageUrl, stock, categoryId } = req.body ?? {};
+  const current = await pool.query("SELECT * FROM products WHERE id=$1", [req.params.id]);
+  if (!current.rowCount) return res.status(404).json({ message: "محصول پیدا نشد" });
+  const old = current.rows[0];
+  const next = {
+    name: name === undefined ? old.name : String(name).trim(),
+    description: description === undefined ? old.description : String(description),
+    price: price === undefined ? Number(old.price) : Number(price),
+    imageUrl: imageUrl === undefined ? old.image_url : String(imageUrl),
+    stock: stock === undefined ? old.stock : Number(stock),
+    categoryId: categoryId === undefined ? old.category_id : Number(categoryId)
+  };
+  if (!next.name || !Number.isFinite(next.price) || next.price < 0 || !Number.isInteger(next.stock) || next.stock < 0 || !Number.isInteger(next.categoryId))
+    return res.status(400).json({ message: "اطلاعات محصول معتبر نیست" });
+  const category = await pool.query("SELECT id FROM categories WHERE id=$1", [next.categoryId]);
+  if (!category.rowCount) return res.status(400).json({ message: "دسته‌بندی پیدا نشد" });
+  const result = await pool.query(`
+    UPDATE products SET name=$1,description=$2,price=$3,image_url=$4,stock=$5,category_id=$6
+    WHERE id=$7
+    RETURNING id,name,description,price::float AS price,image_url AS "imageUrl",stock,category_id AS "categoryId"
+  `, [next.name,next.description,next.price,next.imageUrl,next.stock,next.categoryId,req.params.id]);
+  if (next.imageUrl !== old.image_url) await removeUploadedImage(old.image_url);
+  res.json(result.rows[0]);
+}));
+
+app.delete("/api/admin/products/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const result = await pool.query("DELETE FROM products WHERE id=$1 RETURNING id,image_url", [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ message: "محصول پیدا نشد" });
+  await removeUploadedImage(result.rows[0].image_url);
+  res.json({ message: "محصول حذف شد", id: result.rows[0].id });
+}));
+
+app.post("/api/admin/upload", requireAdmin, (req, res) => {
+  imageUpload.single("image")(req, res, (err) => {
+    if (err) return res.status(400).json({ message: err.code === "LIMIT_FILE_SIZE" ? "حداکثر حجم تصویر ۵ مگابایت است" : "فایل تصویر معتبر نیست" });
+    if (!req.file) return res.status(400).json({ message: "فایل تصویر با نام image ارسال کن (JPG, PNG, WebP یا GIF)" });
+    res.status(201).json({ imageUrl: `/uploads/${req.file.filename}`, filename: req.file.filename, size: req.file.size, mimetype: req.file.mimetype });
+  });
+});
+
+app.get("/api/admin/categories", requireAdmin, asyncRoute(async (_req, res) => {
+  const result = await pool.query("SELECT id,name,slug FROM categories ORDER BY id");
+  res.json(result.rows);
+}));
+app.post("/api/admin/categories", requireAdmin, asyncRoute(async (req, res) => {
+  const { name, slug } = req.body ?? {};
+  if (typeof name !== "string" || !name.trim() || typeof slug !== "string" || !/^[a-z0-9-]+$/.test(slug))
+    return res.status(400).json({ message: "name و slug معتبر لازم است؛ slug فقط حروف کوچک انگلیسی، عدد و خط تیره" });
+  try {
+    const result = await pool.query("INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id,name,slug", [name.trim(),slug]);
+    res.status(201).json(result.rows[0]);
+  } catch (e) { if (e.code === "23505") return res.status(409).json({ message: "این slug قبلاً استفاده شده است" }); throw e; }
+}));
+app.put("/api/admin/categories/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const { name, slug } = req.body ?? {};
+  if (typeof name !== "string" || !name.trim() || typeof slug !== "string" || !/^[a-z0-9-]+$/.test(slug))
+    return res.status(400).json({ message: "name و slug معتبر لازم است" });
+  try {
+    const result = await pool.query("UPDATE categories SET name=$1,slug=$2 WHERE id=$3 RETURNING id,name,slug", [name.trim(),slug,req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ message: "دسته‌بندی پیدا نشد" });
+    res.json(result.rows[0]);
+  } catch (e) { if (e.code === "23505") return res.status(409).json({ message: "این slug قبلاً استفاده شده است" }); throw e; }
+}));
+app.delete("/api/admin/categories/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const count = await pool.query("SELECT COUNT(*)::int AS count FROM products WHERE category_id=$1", [req.params.id]);
+  if (count.rows[0].count) return res.status(409).json({ message: "ابتدا محصولات این دسته‌بندی را منتقل یا حذف کن" });
+  const result = await pool.query("DELETE FROM categories WHERE id=$1 RETURNING id", [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ message: "دسته‌بندی پیدا نشد" });
+  res.json({ message: "دسته‌بندی حذف شد", id: result.rows[0].id });
 }));
 
 app.post("/api/auth/register", asyncRoute(async (req, res) => {

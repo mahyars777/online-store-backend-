@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Next.js Store API",
-    "version": "1.1.0",
-    "description": "REST API آموزشی فروشگاه با Express و PostgreSQL. احراز هویت در این نسخه آزمایشی است و برای محیط production مناسب نیست."
+    "version": "1.2.0",
+    "description": "REST API آموزشی فروشگاه با Express و PostgreSQL. احراز هویت در این نسخه آزمایشی است و برای محیط production مناسب نیست. مسیرهای مدیریت با هدر x-admin-key محافظت می‌شوند. آپلود تصویر با multipart/form-data و فیلد image انجام می‌شود."
   },
   "servers": [
     {
@@ -29,6 +29,10 @@
     },
     {
       "name": "Orders"
+    },
+    {
+      "name": "Admin",
+      "description": "عملیات پنل مدیریت؛ ابتدا مقدار ADMIN_API_KEY را در Authorize وارد کن."
     }
   ],
   "components": {
@@ -95,6 +99,13 @@
             "type": "string"
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "AdminKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-key"
       }
     }
   },
@@ -1052,6 +1063,508 @@
             "schema": {
               "type": "integer",
               "example": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/products": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "فهرست همه محصولات برای پنل مدیریت",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "فهرست محصولات",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "price": {
+                        "type": "number"
+                      },
+                      "imageUrl": {
+                        "type": "string"
+                      },
+                      "stock": {
+                        "type": "integer"
+                      },
+                      "categoryId": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "ایجاد محصول جدید",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "محصول ایجاد شد",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "number"
+                    },
+                    "imageUrl": {
+                      "type": "string"
+                    },
+                    "stock": {
+                      "type": "integer"
+                    },
+                    "categoryId": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ورودی نامعتبر"
+          },
+          "401": {
+            "description": "کلید مدیر نامعتبر"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "price",
+                  "stock",
+                  "categoryId"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "گوشی جدید"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "توضیحات محصول"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 12500000
+                  },
+                  "imageUrl": {
+                    "type": "string",
+                    "example": "/uploads/1710000000-example.webp"
+                  },
+                  "stock": {
+                    "type": "integer",
+                    "example": 10
+                  },
+                  "categoryId": {
+                    "type": "integer",
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/products/{id}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "ویرایش اطلاعات محصول (ارسال فیلدهای موردنظر کافی است)",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "محصول ویرایش شد",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "number"
+                    },
+                    "imageUrl": {
+                      "type": "string"
+                    },
+                    "stock": {
+                      "type": "integer"
+                    },
+                    "categoryId": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ورودی نامعتبر"
+          },
+          "404": {
+            "description": "محصول پیدا نشد"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "گوشی جدید"
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "توضیحات محصول"
+                  },
+                  "price": {
+                    "type": "number",
+                    "example": 12500000
+                  },
+                  "imageUrl": {
+                    "type": "string",
+                    "example": "/uploads/1710000000-example.webp"
+                  },
+                  "stock": {
+                    "type": "integer",
+                    "example": 10
+                  },
+                  "categoryId": {
+                    "type": "integer",
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "حذف محصول و تصویر آپلودشده آن",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "محصول حذف شد"
+          },
+          "404": {
+            "description": "محصول پیدا نشد"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/upload": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "آپلود تصویر محصول؛ حداکثر ۵ مگابایت",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "تصویر ذخیره شد؛ imageUrl را در محصول ثبت کن",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imageUrl": {
+                      "type": "string",
+                      "example": "/uploads/1710000000-image.webp"
+                    },
+                    "filename": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "mimetype": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "فایل نامعتبر یا بیش از حد بزرگ"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "image"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/categories": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "فهرست دسته‌بندی‌ها برای مدیر",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "موفق"
+          },
+          "400": {
+            "description": "ورودی نامعتبر"
+          },
+          "401": {
+            "description": "کلید مدیر نامعتبر"
+          },
+          "500": {
+            "description": "خطای سرور"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "ایجاد دسته‌بندی",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "ایجاد شد"
+          },
+          "409": {
+            "description": "slug تکراری"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "slug"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "لوازم دیجیتال"
+                  },
+                  "slug": {
+                    "type": "string",
+                    "example": "digital"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/categories/{id}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "ویرایش دسته‌بندی",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "موفق"
+          },
+          "400": {
+            "description": "ورودی نامعتبر"
+          },
+          "401": {
+            "description": "کلید مدیر نامعتبر"
+          },
+          "500": {
+            "description": "خطای سرور"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "slug"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "لوازم دیجیتال"
+                  },
+                  "slug": {
+                    "type": "string",
+                    "example": "digital"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "حذف دسته‌بندی خالی",
+        "security": [
+          {
+            "AdminKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "موفق"
+          },
+          "400": {
+            "description": "ورودی نامعتبر"
+          },
+          "401": {
+            "description": "کلید مدیر نامعتبر"
+          },
+          "500": {
+            "description": "خطای سرور"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
             }
           }
         ]
